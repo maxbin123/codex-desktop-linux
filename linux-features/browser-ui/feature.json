@@ -1,0 +1,26 @@
+{
+  "id": "browser-ui",
+  "title": "Browser UI",
+  "description": "Experimental native-browser DOM mode backed by a hidden Electron IPC host.",
+  "defaultEnabled": false,
+  "entrypoints": {
+    "patchDescriptors": "./patch.js"
+  },
+  "resources": [
+    {
+      "source": "runtime.cjs",
+      "target": ".codex-linux/features/browser-ui/runtime.cjs",
+      "mode": "0644"
+    },
+    {
+      "source": "browser-ui-bridge.js",
+      "target": ".codex-linux/features/browser-ui/browser-ui-bridge.js",
+      "mode": "0644"
+    },
+    {
+      "source": "launch.sh",
+      "target": ".codex-linux/features/browser-ui/launch.sh",
+      "mode": "0755"
+    }
+  ]
+}

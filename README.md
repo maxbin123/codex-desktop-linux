@@ -208,6 +208,7 @@ workarounds.
 | Agent Workspaces | Opt-in | `agent-workspace` | [Docs](linux-features/agent-workspace/README.md) |
 | API key model visibility | Opt-in | `api-key-model-visibility` | [Docs](linux-features/api-key-model-visibility/README.md) |
 | API key service tier | Opt-in | `api-key-service-tier` | [Docs](linux-features/api-key-service-tier/README.md) |
+| Browser UI | Opt-in experiment | `browser-ui` plus `CODEX_LINUX_WEB_UI=1` | [Docs](linux-features/browser-ui/README.md) |
 | Linux AppShots | Opt-in | `appshots` | [Docs](linux-features/appshots/README.md) |
 | Authenticated proxy | Opt-in | `authenticated-proxy` | [Docs](linux-features/authenticated-proxy/README.md) |
 | Wrapper updater button | Opt-in | `codex-wrapper-updater` | [Docs](linux-features/codex-wrapper-updater/README.md) |
