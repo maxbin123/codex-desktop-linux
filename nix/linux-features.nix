@@ -2,6 +2,9 @@
 let
   supportedFeatureIds = [
     "appshots"
+    "codex-micro"
+    "codex-wrapper-updater"
+    "directory-only-working-tree-watch"
     "frameless-titlebar"
     "global-dictation"
     "mcp-helper-reaper"
@@ -9,7 +12,10 @@ let
     "open-target-discovery"
     "persistent-status-panel"
     "pet-overlay"
+    "remote-control-ui"
     "remote-mobile-control"
+    "shallow-repository-watches"
+    "ui-tweaks"
   ];
 
   sortAndDeduplicate = featureIds:

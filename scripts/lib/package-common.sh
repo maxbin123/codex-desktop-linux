@@ -143,7 +143,7 @@ run_linux_feature_package_hooks() {
     [ -f "$helper" ] || error "Missing Linux features helper: $helper"
 
     node_bin="$(package_node_binary)"
-    if ! hooks_output="$("$node_bin" "$helper" --package-hooks "$package_format")"; then
+    if ! hooks_output="$("$node_bin" "$helper" --package-hooks "$package_format" "$app_dir")"; then
         error "Failed to discover Linux feature package hooks for $package_format"
     fi
 
@@ -163,6 +163,76 @@ run_linux_feature_package_hooks() {
             PACKAGE_STAGING_ROOT="$staging_root" \
             bash "$hook_path"
     done <<< "$hooks_output"
+}
+
+stage_linux_feature_package_resources() {
+    local staging_root="$1"
+    local package_format="$2"
+    local helper="$REPO_DIR/scripts/lib/linux-features.js"
+    local node_bin
+    local app_dir="$staging_root/opt/$PACKAGE_NAME"
+
+    [ -d "$staging_root" ] || error "Missing package staging root: $staging_root"
+    [ -f "$helper" ] || error "Missing Linux features helper: $helper"
+    node_bin="$(package_node_binary)"
+    "$node_bin" "$helper" --stage-package-resources "$package_format" "$staging_root" "$app_dir"
+}
+
+linux_feature_package_dependencies() {
+    local package_format="$1"
+    local app_dir="$2"
+    local helper="$REPO_DIR/scripts/lib/linux-features.js"
+    local node_bin
+
+    [ -f "$helper" ] || error "Missing Linux features helper: $helper"
+    node_bin="$(package_node_binary)"
+    "$node_bin" "$helper" --package-dependencies "$package_format" "$app_dir"
+}
+
+linux_feature_package_files() {
+    local package_format="$1"
+    local app_dir="$2"
+    local helper="$REPO_DIR/scripts/lib/linux-features.js"
+    local node_bin
+
+    [ -f "$helper" ] || error "Missing Linux features helper: $helper"
+    node_bin="$(package_node_binary)"
+    "$node_bin" "$helper" --package-files "$package_format" "$app_dir"
+}
+
+linux_feature_package_dependency_suffix() {
+    local package_format="$1"
+    local app_dir="$2"
+    local dependencies_output
+    local dependency
+    local suffix=""
+
+    if ! dependencies_output="$(linux_feature_package_dependencies "$package_format" "$app_dir")"; then
+        return 1
+    fi
+    while IFS= read -r dependency; do
+        [ -n "$dependency" ] || continue
+        suffix+=", $dependency"
+    done <<< "$dependencies_output"
+    printf '%s' "$suffix"
+}
+
+replace_literal_file_token() {
+    local target="$1"
+    local token="$2"
+    local replacement="$3"
+    local node_bin
+
+    node_bin="$(package_node_binary)"
+    "$node_bin" - "$target" "$token" "$replacement" <<'NODE'
+const fs = require("node:fs");
+const [target, token, replacement] = process.argv.slice(2);
+const source = fs.readFileSync(target, "utf8");
+if (!source.includes(token)) {
+  throw new Error(`Template token not found in ${target}: ${token}`);
+}
+fs.writeFileSync(target, source.split(token).join(replacement));
+NODE
 }
 
 render_desktop_entry() {
@@ -248,7 +318,7 @@ resolve_package_icon_source() {
         while IFS= read -r -d '' candidate; do
             candidates+=("$candidate")
         done < <(
-            find "$icon_dir" -maxdepth 1 -type f -name '*.png' ! -name '*-tray.png' -print0 |
+            find "$icon_dir" -maxdepth 1 -type f -name '*.png' -print0 |
                 sort -z
         )
     fi
@@ -744,7 +814,7 @@ stage_common_package_files() {
     cp -aT "$APP_DIR" "$app_root"
     mkdir -p "$app_root/.codex-linux"
     cp "$ICON_SOURCE" "$app_root/.codex-linux/$PACKAGE_NAME.png"
-    cp "$(resolve_tray_icon_source "$app_root")" "$app_root/.codex-linux/$PACKAGE_NAME-tray.png"
+    cp "$REPO_DIR/launcher/cli-launch-path.py" "$app_root/.codex-linux/cli-launch-path.py"
     render_desktop_entry_doctor_helper "$app_root/.codex-linux/codex-desktop-entry-doctor.sh"
     render_desktop_entry "$root/usr/share/applications/$PACKAGE_NAME.desktop"
     cp "$ICON_SOURCE" "$root/usr/share/icons/hicolor/256x256/apps/$PACKAGE_NAME.png"
@@ -760,31 +830,6 @@ stage_common_package_files() {
             "$app_root/.codex-linux/codex-no-updater-transition-cleanup.sh"
     fi
     render_packaged_runtime_helper "$app_root/.codex-linux/codex-packaged-runtime.sh"
-}
-
-resolve_tray_icon_source() {
-    local app_root="$1"
-    local assets_dir="$app_root/content/webview/assets"
-    local -a candidates=()
-    local candidate
-
-    if [ -d "$assets_dir" ]; then
-        while IFS= read -r -d '' candidate; do
-            candidates+=("$candidate")
-        done < <(find "$assets_dir" -maxdepth 1 -type f -name 'app-*.png' -print0 | sort -z)
-    fi
-
-    if [ "${#candidates[@]}" -eq 1 ]; then
-        printf '%s\n' "${candidates[0]}"
-        return 0
-    fi
-
-    if [ "${#candidates[@]}" -gt 1 ]; then
-        warn "Multiple tray icon candidates found in $assets_dir; falling back to package icon"
-    else
-        warn "Could not resolve a unique tray icon in $assets_dir; falling back to package icon"
-    fi
-    printf '%s\n' "$ICON_SOURCE"
 }
 
 stage_update_builder_bundle() {
@@ -804,6 +849,7 @@ stage_update_builder_bundle() {
     cp "$REPO_DIR/install.sh" "$update_builder_root/install.sh"
     cp "$REPO_DIR/CHANGELOG.md" "$update_builder_root/CHANGELOG.md"
     cp "$REPO_DIR/launcher/start.sh.template" "$update_builder_root/launcher/start.sh.template"
+    cp "$REPO_DIR/launcher/cli-launch-path.py" "$update_builder_root/launcher/cli-launch-path.py"
     cp "$REPO_DIR/launcher/webview-server.py" "$update_builder_root/launcher/webview-server.py"
     cp "$REPO_DIR/Cargo.toml" "$update_builder_root/Cargo.toml"
     cp "$REPO_DIR/Cargo.lock" "$update_builder_root/Cargo.lock"
@@ -950,6 +996,23 @@ for (const entry of entries) {
 NODE
     then
         error "Failed to restore Linux feature staged file permissions"
+    fi
+}
+
+restore_linux_feature_package_resource_permissions() {
+    local root="$1"
+    local package_format="$2"
+    local helper="$REPO_DIR/scripts/lib/linux-features.js"
+    local node_bin
+    local app_dir="$root/opt/$PACKAGE_NAME"
+
+    [ -d "$root" ] || error "Missing package root: $root"
+    [ -f "$helper" ] || error "Missing Linux features helper: $helper"
+
+    node_bin="$(package_node_binary)"
+    if ! "$node_bin" "$helper" \
+        --restore-package-resource-permissions "$package_format" "$root" "$app_dir"; then
+        error "Failed to restore Linux feature package resource permissions"
     fi
 }
 

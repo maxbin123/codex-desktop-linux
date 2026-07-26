@@ -37,6 +37,7 @@ Feature settings can be overridden in the gitignored `features.json` file:
         "lockPosition": false,
         "mode": "interactive",
         "hyprland": true,
+        "kwin": true,
         "niri": true
       }
     }
@@ -45,8 +46,13 @@ Feature settings can be overridden in the gitignored `features.json` file:
 ```
 
 `lockPosition: false` preserves manual pet moves when the existing window
-position is visible. Set it to `true` only when you want the mascot pinned to
-the configured screen corner on every layout pass.
+position is visible. In this default unlocked mode the overlay is frameless:
+transparent space moves the native `356×320` window, while the mascot is a
+`no-drag` region so its renderer gesture can reposition the mascot within the
+view. Existing tray controls keep their own interactive regions. Set
+`lockPosition` to `true` only when you want the mascot pinned to the configured
+screen corner on every layout pass; that mode removes the full-surface
+drag/input opt-in.
 
 ## Options
 
@@ -60,6 +66,7 @@ the configured screen corner on every layout pass.
 | `lockPosition` | `true` or `false` | `false` | Pins to `gravity` when true; otherwise keeps a visible manual position. |
 | `mode` | `interactive` or `passive` | `interactive` | `passive` makes the pet window non-focusable. |
 | `hyprland` | `true` or `false` | `true` | Uses `hyprctl` only in detected Hyprland sessions. |
+| `kwin` | `true` or `false` | `true` | Uses KWin scripting only in detected KDE Plasma sessions. |
 | `niri` | `true` or `false` | `true` | Uses `niri msg` only in detected Niri sessions. |
 
 Runtime overrides are also supported after restart:
@@ -70,6 +77,7 @@ CODEX_PET_OVERLAY_GRAVITY=bottom-left
 CODEX_PET_OVERLAY_MODE=passive
 CODEX_PET_OVERLAY_LOCK_POSITION=1
 CODEX_PET_OVERLAY_HYPRLAND=0
+CODEX_PET_OVERLAY_KWIN=0
 CODEX_PET_OVERLAY_NIRI=0
 ```
 
@@ -96,6 +104,24 @@ Electron hint and stops issuing that Hyprland action.
 
 Hyprland command failures are ignored so launching Codex does not depend on
 `hyprctl` being present.
+
+## KDE Plasma Notes
+
+On Plasma Wayland, Electron's client-side always-on-top and positioning calls
+are advisory and KWin may ignore them. When `kwin` is enabled, the feature uses
+KWin's session-bus scripting interface to match the one window with the exact
+`Codex Pet Overlay` title and current process id. It applies `keepAbove`,
+all-desktop, task-switcher, and border hints directly in KWin.
+
+Live dragging loads one short-lived KWin script at pointer-down. The script
+keeps the exact cursor-to-window grab offset and moves the window directly on
+KWin's compositor cursor signal, so there is no pointer warp or delayed
+app-to-compositor position queue. The renderer starts drags only from visible
+mascot and notification-tray hit regions, not the transparent remainder of the
+overlay. Temporary scripts are unloaded and removed after normal completion,
+and window removal disconnects an active drag. If KWin scripting or both
+`qdbus6` and `qdbus` are unavailable, the feature falls back to Electron's
+normal behavior without blocking the app.
 
 ## Niri Notes
 
@@ -143,10 +169,16 @@ node --test linux-features/pet-overlay/test.js
 For a manual check, enable the feature, rebuild, and launch the app:
 
 - The pet overlay should remain transparent.
+- With `lockPosition: false`, it should be frameless; drag transparent space
+  to move the window, and drag the mascot to reposition it inside the view.
+  Tray controls should remain clickable, and the window position lasts only
+  for the running session.
 - Selecting a different pet should update the open overlay without restarting Codex.
 - On Hyprland, the pet should have no visible compositor border or shadow.
 - On Niri, the pet should open floating, avoid initial focus, and move by
   targeted window id.
+- On KDE Plasma Wayland, the pet should stay above normal windows and follow
+  direct pointer drags without requiring a modifier key.
 - On Niri with `lockPosition: false`, rapidly reverse a horizontal drag; the
   pet should follow the latest pointer target without delayed overshoot or a
   snap-back after release.
@@ -159,5 +191,5 @@ For a manual check, enable the feature, rebuild, and launch the app:
 ## Known Risks
 
 Wayland compositors may reject app-driven positioning, all-workspace visibility,
-or z-order changes. Hyprland and Niri support is best-effort and deliberately
-scoped to a single unambiguous matched avatar window.
+or z-order changes. Hyprland, KWin, and Niri support is best-effort and
+deliberately scoped to a single unambiguous matched avatar window.

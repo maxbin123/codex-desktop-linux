@@ -226,6 +226,7 @@ SCRIPT
     chmod +x "$INSTALL_DIR/start.sh"
     mkdir -p "$INSTALL_DIR/.codex-linux"
     cp "$SCRIPT_DIR/launcher/webview-server.py" "$INSTALL_DIR/.codex-linux/webview-server.py"
+    cp "$SCRIPT_DIR/launcher/cli-launch-path.py" "$INSTALL_DIR/.codex-linux/cli-launch-path.py"
     local linux_icon_source="$LINUX_ICON_SOURCE"
     [ -f "$linux_icon_source" ] || linux_icon_source="$ICON_SOURCE"
     if [ -f "$linux_icon_source" ]; then
@@ -345,6 +346,7 @@ main() {
     stage_linux_notification_actions_bridge
     install_bundled_plugin_resources "$app_dir"
     run_linux_feature_stage_hooks "$app_dir"
+    harden_bundled_plugin_source_tree
     create_start_script
     if [ -n "${CODEX_PATCH_REPORT_RESOLVED:-}" ] && [ -f "$CODEX_PATCH_REPORT_RESOLVED" ]; then
         cp "$CODEX_PATCH_REPORT_RESOLVED" "$INSTALL_DIR/.codex-linux/patch-report.json"

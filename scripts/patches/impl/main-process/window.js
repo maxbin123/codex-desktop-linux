@@ -270,18 +270,24 @@ function applyLinuxNativeTitlebarPatch(currentSource) {
 
 function applyLinuxMenuPatch(currentSource) {
   const menuRegex = /process\.platform===`win32`&&([A-Za-z_$][\w$]*)\.removeMenu\(\),/g;
+  const linuxMenuPatchFor = (windowVar) =>
+    `process.platform===\`linux\`&&(${windowVar}.on(\`system-context-menu\`,e=>e.preventDefault()),${windowVar}.removeMenu()),`;
   let patchedSource = currentSource
     .replace(
       /process\.platform===`linux`&&\(([A-Za-z_$][\w$]*)\.setMenuBarVisibility\(!1\),\1\.removeMenu\?\.\(\)\),process\.platform===`win32`&&\1\.removeMenu\(\),/g,
-      (_match, windowVar) => `process.platform===\`linux\`&&${windowVar}.removeMenu(),process.platform===\`win32\`&&${windowVar}.removeMenu(),`,
+      (_match, windowVar) => `${linuxMenuPatchFor(windowVar)}process.platform===\`win32\`&&${windowVar}.removeMenu(),`,
     )
     .replace(
       /process\.platform===`linux`&&([A-Za-z_$][\w$]*)\.setMenuBarVisibility\(!1\),process\.platform===`win32`&&\1\.removeMenu\(\),/g,
-      (_match, windowVar) => `process.platform===\`linux\`&&${windowVar}.removeMenu(),process.platform===\`win32\`&&${windowVar}.removeMenu(),`,
+      (_match, windowVar) => `${linuxMenuPatchFor(windowVar)}process.platform===\`win32\`&&${windowVar}.removeMenu(),`,
+    )
+    .replace(
+      /process\.platform===`linux`&&([A-Za-z_$][\w$]*)\.removeMenu\(\),process\.platform===`win32`&&\1\.removeMenu\(\),/g,
+      (_match, windowVar) => `${linuxMenuPatchFor(windowVar)}process.platform===\`win32\`&&${windowVar}.removeMenu(),`,
     );
   let patchedAny = patchedSource !== currentSource;
   patchedSource = patchedSource.replace(menuRegex, (match, windowVar, offset, source) => {
-    const linuxPatch = `process.platform===\`linux\`&&${windowVar}.removeMenu(),`;
+    const linuxPatch = linuxMenuPatchFor(windowVar);
     if (source.slice(Math.max(0, offset - linuxPatch.length), offset) === linuxPatch) {
       return match;
     }
@@ -290,7 +296,7 @@ function applyLinuxMenuPatch(currentSource) {
   });
 
   const hasWindowsRemoveMenu = /process\.platform===`win32`&&[A-Za-z_$][\w$]*\.removeMenu\(\),/.test(patchedSource);
-  const hasLinuxRemoveMenu = /process\.platform===`linux`&&([A-Za-z_$][\w$]*)\.removeMenu\(\),process\.platform===`win32`&&\1\.removeMenu\(\),/.test(patchedSource);
+  const hasLinuxRemoveMenu = /process\.platform===`linux`&&\(([A-Za-z_$][\w$]*)\.on\(`system-context-menu`,[A-Za-z_$][\w$]*=>[A-Za-z_$][\w$]*\.preventDefault\(\)\),\1\.removeMenu\(\)\),process\.platform===`win32`&&\1\.removeMenu\(\),/.test(patchedSource);
   if (!patchedAny && hasWindowsRemoveMenu && !hasLinuxRemoveMenu) {
     console.warn("WARN: Could not find window menu visibility snippet — skipping menu patch");
   }
@@ -303,6 +309,139 @@ function applyLinuxApplicationMenuPatch(currentSource) {
     /([A-Za-z_$][\w$]*)\.Menu\.setApplicationMenu\(process\.platform===`linux`\?null:([A-Za-z_$][\w$]*)\)/g,
     (_match, electronAlias, menuAlias) => `${electronAlias}.Menu.setApplicationMenu(${menuAlias})`,
   );
+}
+
+function applyLinuxAppReloadShortcutsPatch(currentSource) {
+  const patchMarker = "codexLinuxReloadAppWindow";
+  if (currentSource.includes(patchMarker)) {
+    return currentSource;
+  }
+
+  const identifierPattern = "[A-Za-z_$][\\w$]*";
+  // Providers are intentionally constrained to static member paths.  This
+  // admits both `webContents` and the current `c.webContents` shape without
+  // accepting calls, computed members, optional chaining, or expressions.
+  const staticProviderPattern =
+    `${identifierPattern}(?:\\.${identifierPattern})*`;
+  const enabledPattern =
+    new RegExp(
+      `(${identifierPattern})=(${identifierPattern})!=null&&!\\2\\.isDestroyed\\(\\)&&!!(${identifierPattern})\\(\\2\\)\\?\\.canReloadActiveVisiblePage\\(\\2,(${identifierPattern})\\)`,
+      "g",
+    );
+  const semanticReloadHandlerPattern = new RegExp(
+    `(${identifierPattern})=async\\((${identifierPattern})=!1\\)=>\\{let (${identifierPattern})=await (${identifierPattern})\\(\\);if\\(!\\3\\)return;let (${identifierPattern})=(${identifierPattern})\\(\\3\\);if\\(\\5==null\\)return;let (${identifierPattern})=(${staticProviderPattern})\\.getFocusedWebContents\\(\\);if\\(\\2\\)\\{\\5\\.reloadActiveVisiblePageWithOptions\\(\\3,\\{ignoreCache:!0\\},\\7\\);return\\}\\5\\.reloadActiveVisiblePage\\(\\3,\\7\\)\\}`,
+    "g",
+  );
+  const focusedWebContentsProviderPattern = new RegExp(
+    `(${identifierPattern})=(${staticProviderPattern})\\.getFocusedWebContents\\(\\)`,
+    "g",
+  );
+  const findFocusedWebContentsProvider = (focusedWebContentsAlias, beforeIndex) => {
+    let providerAlias = null;
+    for (const match of currentSource
+      .slice(0, beforeIndex)
+      .matchAll(focusedWebContentsProviderPattern)) {
+      if (match[1] === focusedWebContentsAlias) {
+        providerAlias = match[2];
+      }
+    }
+    return providerAlias;
+  };
+  const enabledCandidates = [...currentSource.matchAll(enabledPattern)]
+    .map((match) => {
+      const [text, enabledAlias, windowAlias, browserSidebarManagerAlias, focusedWebContentsAlias] = match;
+      return {
+        enabledText: text,
+        enabledStart: match.index,
+        enabledEnd: match.index + text.length,
+        enabledAlias,
+        windowAlias,
+        browserSidebarManagerAlias,
+        focusedWebContentsAlias,
+        focusedWebContentsProvider: findFocusedWebContentsProvider(
+          focusedWebContentsAlias,
+          match.index,
+        ),
+      };
+    })
+    .filter((candidate) => candidate.focusedWebContentsProvider != null);
+  const reloadHandlers = [...currentSource.matchAll(semanticReloadHandlerPattern)].map(
+    (match) => {
+      const [
+        text,
+        reloadHandlerAlias,
+        ignoreCacheAlias,
+        targetWindowAlias,
+        getWindowAlias,
+        _browserSidebarManagerResultAlias,
+        browserSidebarManagerAlias,
+        _focusedWebContentsAlias,
+        focusedWebContentsProvider,
+      ] = match;
+      return {
+        handlerText: text,
+        handlerStart: match.index,
+        handlerEnd: match.index + text.length,
+        reloadHandlerAlias,
+        ignoreCacheAlias,
+        targetWindowAlias,
+        getWindowAlias,
+        browserSidebarManagerAlias,
+        focusedWebContentsProvider,
+      };
+    },
+  );
+  const reloadCandidates = enabledCandidates.flatMap((enabledCandidate) =>
+    reloadHandlers
+      .filter(
+        (handler) =>
+          handler.browserSidebarManagerAlias === enabledCandidate.browserSidebarManagerAlias &&
+          handler.focusedWebContentsProvider ===
+            enabledCandidate.focusedWebContentsProvider,
+      )
+      .map((handler) => ({ ...enabledCandidate, ...handler })),
+  );
+
+  if (reloadCandidates.length !== 1) {
+    console.warn("WARN: Could not find native browser reload menu actions — skipping Linux app reload shortcut patch");
+    return currentSource;
+  }
+
+  const {
+    enabledText,
+    enabledStart,
+    enabledEnd,
+    handlerText,
+    handlerStart,
+    handlerEnd,
+    enabledAlias,
+    windowAlias,
+    browserSidebarManagerAlias,
+    focusedWebContentsAlias,
+    reloadHandlerAlias,
+    ignoreCacheAlias,
+    targetWindowAlias,
+    getWindowAlias,
+  } = reloadCandidates[0];
+  const enabledReplacement =
+    `${enabledAlias}=process.platform===\`linux\`||${windowAlias}!=null&&!${windowAlias}.isDestroyed()&&!!${browserSidebarManagerAlias}(${windowAlias})?.canReloadActiveVisiblePage(${windowAlias},${focusedWebContentsAlias})`;
+  const handlerPrefix =
+    `${reloadHandlerAlias}=async(${ignoreCacheAlias}=!1)=>{let ${targetWindowAlias}=await ${getWindowAlias}();if(!${targetWindowAlias})return;`;
+  const handlerReplacement = handlerText.replace(
+    handlerPrefix,
+    `${handlerPrefix}if(process.platform===\`linux\`){let ${patchMarker}=${targetWindowAlias}.webContents;if(${ignoreCacheAlias}){${patchMarker}.reloadIgnoringCache();return}${targetWindowAlias}.reload();return}`,
+  );
+
+  return [
+    { start: enabledStart, end: enabledEnd, replacement: enabledReplacement },
+    { start: handlerStart, end: handlerEnd, replacement: handlerReplacement },
+  ]
+    .sort((left, right) => right.start - left.start)
+    .reduce(
+      (source, { start, end, replacement }) =>
+        source.slice(0, start) + replacement + source.slice(end),
+      currentSource,
+    );
 }
 
 function applyLinuxSetIconPatch(currentSource, iconAsset) {
@@ -484,86 +623,8 @@ function applyLinuxOpaqueBackgroundPatch(currentSource) {
   );
 }
 
-function applyLinuxAboutDialogPatch(currentSource, iconPathExpression) {
-  if (!currentSource.includes("codex.aboutDialog.title")) {
-    return currentSource;
-  }
-
-  const aboutHtmlIconNullSafeRegex =
-    /htmlIconDataUrl:[A-Za-z_$][\w$]*\?\?\(([A-Za-z_$][\w$]*)==null\|\|\1\.isEmpty\(\)\?null:\1\.resize\([^)]*\)\.toDataURL\(\)\),windowIcon:\1\?\?null\}/;
-  const aboutWindowIconNullSafeRegex =
-    /\.\.\.([A-Za-z_$][\w$]*)\.windowIcon==null\|\|\1\.windowIcon\.isEmpty\(\)\?\{\}:\{icon:\1\.windowIcon\}/;
-  const aboutHtmlIconUnsafeRegex =
-    /htmlIconDataUrl:([A-Za-z_$][\w$]*)\?\?\(([A-Za-z_$][\w$]*)\.isEmpty\(\)\?null:\2\.resize\(([^)]*)\)\.toDataURL\(\)\),windowIcon:\2\}/;
-  const aboutWindowIconUnsafeRegex =
-    /\.\.\.([A-Za-z_$][\w$]*)\.windowIcon\.isEmpty\(\)\?\{\}:\{icon:\1\.windowIcon\}/;
-  const safeCurrentFileIconRegex =
-    /\[[A-Za-z_$][\w$]*\?[A-Za-z_$][\w$]*\([^()]+\):null,[A-Za-z_$][\w$]*\?[A-Za-z_$][\w$]*\.nativeImage\.createFromPath\([^()]+\):[A-Za-z_$][\w$]*\.app\.getFileIcon\([^()]+,\{size:`normal`\}\)\.catch\(\(\)=>null\)\]/;
-  const safeBundledIconRegex =
-    iconPathExpression == null
-      ? null
-      : new RegExp(
-          `\\[\\s*process\\.platform===\`linux\`\\?null:[A-Za-z_$][\\w$]*\\?[A-Za-z_$][\\w$]*\\([^()]+\\):null,\\s*process\\.platform===\`linux\`\\?Promise\\.resolve\\(\\(\\(\\)=>\\{let __codexLinuxAboutIcon=[A-Za-z_$][\\w$]*\\.nativeImage\\.createFromPath\\(${escapeRegExp(iconPathExpression)}\\);return __codexLinuxAboutIcon\\.isEmpty\\(\\)\\?null:__codexLinuxAboutIcon\\}\\)\\(\\)\\):[A-Za-z_$][\\w$]*\\?[A-Za-z_$][\\w$]*\\.nativeImage\\.createFromPath\\([^()]+\\):[A-Za-z_$][\\w$]*\\.app\\.getFileIcon\\([^()]+,\\{size:\`normal\`\\}\\)\\.catch\\(\\(\\)=>null\\)\\s*\\]`,
-        );
-  const iconSourceReady =
-    iconPathExpression == null
-      ? safeCurrentFileIconRegex.test(currentSource)
-      : safeBundledIconRegex.test(currentSource);
-  if (
-    iconSourceReady &&
-    aboutHtmlIconNullSafeRegex.test(currentSource) &&
-    aboutWindowIconNullSafeRegex.test(currentSource)
-  ) {
-    return currentSource;
-  }
-
-  const currentAboutIconPromiseRegex =
-    /\[([A-Za-z_$][\w$]*)\?([A-Za-z_$][\w$]*)\(([^()]+)\):null,([A-Za-z_$][\w$]*)\?([A-Za-z_$][\w$]*)\.nativeImage\.createFromPath\(([^()]+)\):([A-Za-z_$][\w$]*)\.app\.getFileIcon\(([^()]+),\{size:`normal`\}\)\]/;
-  if (
-    !currentAboutIconPromiseRegex.test(currentSource) ||
-    !aboutHtmlIconUnsafeRegex.test(currentSource) ||
-    !aboutWindowIconUnsafeRegex.test(currentSource)
-  ) {
-    console.warn("WARN: Could not patch About dialog icon fallback for Linux");
-    return currentSource;
-  }
-
-  let patchedSource = currentSource;
-  if (iconPathExpression != null) {
-    patchedSource = patchedSource.replace(
-      currentAboutIconPromiseRegex,
-      `[
-process.platform===\`linux\`?null:$1?$2($3):null,
-process.platform===\`linux\`?Promise.resolve((()=>{let __codexLinuxAboutIcon=$5.nativeImage.createFromPath(${iconPathExpression});return __codexLinuxAboutIcon.isEmpty()?null:__codexLinuxAboutIcon})()):$4?$5.nativeImage.createFromPath($6):$7.app.getFileIcon($8,{size:\`normal\`}).catch(()=>null)
-]`,
-    );
-  } else {
-    patchedSource = patchedSource.replace(
-      currentAboutIconPromiseRegex,
-      "[$1?$2($3):null,$4?$5.nativeImage.createFromPath($6):$7.app.getFileIcon($8,{size:`normal`}).catch(()=>null)]",
-    );
-  }
-
-  patchedSource = patchedSource
-    .replace(
-      aboutHtmlIconUnsafeRegex,
-      "htmlIconDataUrl:$1??($2==null||$2.isEmpty()?null:$2.resize($3).toDataURL()),windowIcon:$2??null}",
-    )
-    .replace(
-      aboutWindowIconUnsafeRegex,
-      "...$1.windowIcon==null||$1.windowIcon.isEmpty()?{}:{icon:$1.windowIcon}",
-    );
-
-  if (patchedSource !== currentSource) {
-    return patchedSource;
-  }
-
-  console.warn("WARN: Could not patch About dialog icon fallback for Linux");
-  return currentSource;
-}
-
 module.exports = {
-  applyLinuxAboutDialogPatch,
+  applyLinuxAppReloadShortcutsPatch,
   applyLinuxApplicationMenuPatch,
   applyLinuxMenuPatch,
   applyLinuxNativeTitlebarPatch,

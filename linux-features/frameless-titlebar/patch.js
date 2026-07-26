@@ -81,6 +81,15 @@ function applyFramelessTitlebarWebviewPatch(currentSource) {
   const recognizedApplicationMenuLayout =
     foundApplicationMenuLayout || patchedSource.includes("applicationMenu:Object.freeze({left:0,right:0})");
 
+  const headerSafeAreaProp = "codexLinuxUseWindowControlsSafeArea";
+  const hasHeaderSafeArea = currentSource.includes(headerSafeAreaProp);
+  patchedSource = patchedSource.replace(
+    new RegExp(`${headerSafeAreaProp}:![A-Za-z_$][\\w$]*,side:\`end\``, "g"),
+    `${headerSafeAreaProp}:!1,side:\`end\``,
+  );
+  const recognizedHeaderSafeArea =
+    !hasHeaderSafeArea || patchedSource.includes(`${headerSafeAreaProp}:!1,side:\`end\``);
+
   const linuxApplicationMenuChrome = "case`win32`:case`linux`:return`application-menu`";
   const linuxNativeChrome = "case`win32`:return`application-menu`;case`linux`:return`native`";
   const foundApplicationMenuChrome = patchedSource.includes(linuxApplicationMenuChrome);
@@ -103,20 +112,8 @@ function applyFramelessTitlebarWebviewPatch(currentSource) {
   );
   const hasNativeBrowserGate = nativeApplicationMenuBrowserGateRegex.test(patchedSource);
 
-  const applicationMenuBridgeRegex =
-    /function ([A-Za-z_$][\w$]*)\(\)\{return ([A-Za-z_$][\w$]*)\(\)&&window\.electronBridge\?\.showApplicationMenu!=null\}/g;
-  let foundApplicationMenuBridge = false;
-  patchedSource = patchedSource.replace(applicationMenuBridgeRegex, (_match, functionName) => {
-    foundApplicationMenuBridge = true;
-    return `function ${functionName}(){return!1}`;
-  });
-  const disabledApplicationMenuBridgeRegex =
-    /function ([A-Za-z_$][\w$]*)\(\)\{return!1\}[\s\S]{0,1600}?if\(!\1\(\)\)return null;[\s\S]{0,1600}?showApplicationMenu/;
-
   const recognizedChromeMapping = foundApplicationMenuChrome || hasNativeChrome;
   const recognizedBrowserGate = foundApplicationMenuBrowserGate || hasNativeBrowserGate;
-  const recognizedApplicationMenuBridge =
-    foundApplicationMenuBridge || disabledApplicationMenuBridgeRegex.test(patchedSource);
   const hasApplicationMenuChromeConsumer =
     currentSource.includes("dataset.codexWindowChrome===`application-menu`");
 
@@ -126,8 +123,8 @@ function applyFramelessTitlebarWebviewPatch(currentSource) {
   if (hasApplicationMenuLayout && !recognizedBrowserGate) {
     console.warn("WARN: Could not find application menu browser gate - skipping frameless webview platform patch");
   }
-  if (hasApplicationMenuLayout && !recognizedApplicationMenuBridge) {
-    console.warn("WARN: Could not find application menu bridge guard - skipping frameless webview bridge patch");
+  if (hasHeaderSafeArea && !recognizedHeaderSafeArea) {
+    console.warn("WARN: Could not disable the Linux window controls safe area - skipping frameless header padding patch");
   }
   if (hasApplicationMenuChromeConsumer && !recognizedChromeMapping) {
     console.warn("WARN: Could not find Linux window controls chrome mapping - skipping frameless webview chrome patch");
@@ -135,6 +132,7 @@ function applyFramelessTitlebarWebviewPatch(currentSource) {
   if (
     !hasApplicationMenuLayout &&
     !hasApplicationMenuChromeConsumer &&
+    !hasHeaderSafeArea &&
     !recognizedChromeMapping
   ) {
     console.warn("WARN: Could not identify frameless titlebar webview target - skipping frameless webview patch");
@@ -156,7 +154,7 @@ const patches = [
     phase: "webview-asset",
     order: 20_730,
     ciPolicy: "optional",
-    pattern: /^(?:app-initial~app-main~hotkey-window-new-thread-page~hotkey-window-home-page~composer-utility-bar|app-initial~app-main~onboarding-page)-[^.]+\.js$/,
+    pattern: /^app-initial-[^.]+\.js$/,
     missingDescription: "main app chrome bundle",
     skipDescription: "frameless titlebar webview layout patch",
     apply: applyFramelessTitlebarWebviewPatch,

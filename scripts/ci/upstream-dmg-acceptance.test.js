@@ -149,6 +149,31 @@ test("a structured rejection wins over incomplete checks", () => withFixture(({ 
   assert.equal(decision.verdict, "rejected");
 }));
 
+test("preserves packaged builder source metadata when a build fails before build info", () => withFixture(({ root, dmg }) => {
+  const commit = "a".repeat(40);
+  writeJson(root, ".codex-linux/source-info.json", {
+    commit,
+    shortCommit: commit.slice(0, 12),
+    version: "0.10.1",
+    branch: "main",
+    remote: "https://github.com/ilysenko/codex-desktop-linux.git",
+    provenance: "packaged-update-builder",
+  });
+  const core = requiredCoreReport();
+  core.patches[0].status = "failed-required";
+  core.patches[0].reason = "current upstream contract did not match";
+
+  const decision = evaluate(root, dmg, {
+    core,
+    buildStatus: "failure",
+  });
+
+  assert.equal(decision.verdict, "rejected");
+  assert.equal(decision.source?.commit, commit);
+  assert.equal(decision.source?.version, "0.10.1");
+  assert.equal(decision.source?.provenance, "packaged-update-builder");
+}));
+
 test("HTTP identity requires an ETag or Last-Modified plus Content-Length", () => {
   assert.equal(httpIdentity({ contentLength: 42 }), null);
   assert.equal(httpIdentity({ lastModified: "today" }), null);
@@ -202,9 +227,39 @@ test("Nix hash refresh accepts a validated focused output override", () => {
     path.resolve(__dirname, "update-nix-hashes.sh"),
     "utf8",
   );
+  const workflow = fs.readFileSync(
+    path.resolve(__dirname, "../../.github/workflows/ci.yml"),
+    "utf8",
+  );
+  const refreshWorkflow = fs.readFileSync(
+    path.resolve(__dirname, "../../.github/workflows/update-codex-hash.yml"),
+    "utf8",
+  );
+  const watchdogProfile = JSON.parse(fs.readFileSync(
+    path.resolve(__dirname, "watchdog-linux-features.json"),
+    "utf8",
+  ));
 
+  assert.deepEqual(watchdogProfile.enabled, [
+    "appshots",
+    "codex-micro",
+    "codex-wrapper-updater",
+    "directory-only-working-tree-watch",
+    "frameless-titlebar",
+    "global-dictation",
+    "mcp-helper-reaper",
+    "node-repl-reaper",
+    "open-target-discovery",
+    "persistent-status-panel",
+    "remote-control-ui",
+    "remote-mobile-control",
+    "ui-tweaks",
+  ]);
   assert.match(script, /NIX_VERIFY_OUTPUTS/);
   assert.match(script, /NIX_COMPARE_REF/);
+  assert.match(workflow, /\.#checks\.x86_64-linux\.watchdog-linux-features/);
+  assert.match(refreshWorkflow, /NIX_VERIFY_OUTPUTS/);
+  assert.match(refreshWorkflow, /\.#checks\.x86_64-linux\.watchdog-linux-features/);
   assert.match(script, /Invalid Nix verification output/);
   assert.match(script, /run_nix_build "\$VERIFY_LOG" "\$\{PACKAGE_OUTPUTS\[@\]\}"/);
 });

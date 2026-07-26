@@ -225,28 +225,6 @@ function inferSettingsRowExportName(source) {
   return null;
 }
 
-function importBindings(source) {
-  const bindings = new Map();
-  const importPattern = /import\{([^}]*)\}from"\.\/([^"]+)"/g;
-  let match;
-  while ((match = importPattern.exec(source)) != null) {
-    const [, specifiers, assetName] = match;
-    for (const rawSpecifier of specifiers.split(",")) {
-      const specifier = rawSpecifier.trim();
-      if (specifier.length === 0) {
-        continue;
-      }
-      const aliased = specifier.match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/);
-      if (aliased != null) {
-        bindings.set(aliased[2], { assetName, exportName: aliased[1] });
-      } else {
-        bindings.set(specifier, { assetName, exportName: specifier });
-      }
-    }
-  }
-  return bindings;
-}
-
 function inferRuntimeDependenciesFromSettingsSource(source) {
   const routeFactoryLocal = source.match(
     /["'](?:linux-desktop|general-settings)["']:\s*([A-Za-z_$][\w$]*)\(async\(\)=>/,
@@ -304,13 +282,6 @@ function inferRuntimeDependenciesFromSettingsSource(source) {
     || jsxFactoryMatch.index < initializationStart
     || jsxFactoryMatch.index > initializationEnd
   ) {
-    return null;
-  }
-
-  const bindings = importBindings(source);
-  const jsxBinding = bindings.get(jsxFactoryLocal);
-  const reactBinding = bindings.get(reactFactoryLocal);
-  if (jsxBinding == null || reactBinding == null) {
     return null;
   }
 
@@ -390,27 +361,27 @@ function linuxSettingsFallbackComponents({ runtimeBridgeAsset }) {
     settingsRow: {
       assetName: "linux-settings-row-linux.js",
       exportName: "n",
-      source: `${jsxImport}function n({label,description,control}){return $.jsxs("div",{className:"flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between",children:[$.jsxs("div",{className:"min-w-0 flex-1",children:[$.jsx("div",{className:"text-sm font-medium text-token-text-primary",children:label}),$.jsx("div",{className:"mt-1 text-sm text-token-text-secondary",children:description})]}),$.jsx("div",{className:"shrink-0",children:control})]})}export{n};\n`,
+      source: `${jsxImport}function n({label,description,control}){let details=label!=null||description!=null;return $.jsxs("div",{className:"flex items-center justify-between gap-6 px-4 py-3",children:[details?$.jsx("div",{className:"flex min-w-0 flex-1 items-center gap-3",children:$.jsxs("div",{className:"flex min-w-0 flex-col gap-0.5",children:[$.jsx("div",{className:"min-w-0 text-sm font-medium text-token-text-primary",children:label}),description?$.jsx("div",{className:"min-w-0 text-xs leading-4 text-balance text-token-text-secondary",children:description}):null]})}):null,$.jsx("div",{className:"flex max-w-full shrink-0 items-center gap-2",children:control})]})}export{n};\n`,
     },
     settingsSection: {
       assetName: "linux-settings-section-linux.js",
       exportName: "n",
-      source: `${jsxImport}function n({children,className}){return $.jsx("section",{className:className??"flex flex-col gap-2",children})}n.Header=function({title}){return $.jsx("h3",{className:"text-base font-medium text-token-text-primary",children:title})};n.Content=function({children}){return $.jsx("div",{className:"flex flex-col divide-y divide-token-border-light rounded-lg border border-token-border-light bg-token-main-surface-primary",children})};export{n};\n`,
+      source: `${jsxImport}function n({children,className}){return $.jsx("section",{className:className??"flex flex-col",children})}n.Header=function({title}){return $.jsx("div",{className:"flex min-h-toolbar items-center justify-between gap-4 pb-1.5",children:$.jsx("div",{className:"text-base font-medium text-token-text-primary",children:title})})};n.Content=function({children}){return $.jsx("div",{className:"flex flex-col gap-1.5",children})};export{n};\n`,
     },
     settingsGroup: {
       assetName: "linux-settings-group-linux.js",
       exportName: "n",
-      source: `${jsxImport}function n({children}){return $.jsx("div",{className:"flex flex-col divide-y divide-token-border-light",children})}export{n};\n`,
+      source: `${jsxImport}function n({children}){return $.jsx("div",{className:"flex flex-col overflow-hidden rounded-2xl border border-token-border [&>*:not(:last-child)]:relative [&>*:not(:last-child)]:after:pointer-events-none [&>*:not(:last-child)]:after:absolute [&>*:not(:last-child)]:after:inset-x-4 [&>*:not(:last-child)]:after:bottom-0 [&>*:not(:last-child)]:after:h-[0.5px] [&>*:not(:last-child)]:after:bg-token-border [&>*:not(:last-child)]:after:content-['']",style:{backgroundColor:"var(--color-background-panel, var(--color-token-bg-fog))"},children})}export{n};\n`,
     },
     settingsPage: {
       assetName: "linux-settings-page-linux.js",
       exportName: "t",
-      source: `${jsxImport}function t({title,subtitle,children}){return $.jsx("div",{className:"h-full min-h-0 w-full overflow-y-auto",children:$.jsxs("div",{className:"mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6",children:[$.jsxs("div",{className:"flex flex-col gap-1",children:[$.jsx("h2",{className:"text-xl font-semibold text-token-text-primary",children:title}),subtitle?$.jsx("p",{className:"text-sm text-token-text-secondary",children:subtitle}):null]}),children]})})}export{t};\n`,
+      source: `${jsxImport}function t({title,subtitle,children}){return $.jsxs("div",{className:"main-surface flex h-full min-h-0 flex-col",children:[$.jsx("div",{className:"draggable flex items-center px-panel electron:h-toolbar extension:h-toolbar-sm"}),$.jsx("div",{className:"scrollbar-stable flex-1 overflow-y-auto p-panel",children:$.jsxs("div",{className:"mx-auto flex w-full max-w-3xl flex-col electron:min-w-[calc(320px*var(--codex-window-zoom))]",children:[$.jsx("div",{className:"pb-8",children:$.jsxs("header",{className:"flex flex-col gap-4 px-[var(--detail-page-inline-inset,0px)]",children:[$.jsx("h1",{className:"heading-lg min-w-0 break-words font-normal text-token-foreground",children:title}),subtitle?$.jsx("div",{className:"text-base text-token-text-secondary",children:subtitle}):null]})}),$.jsx("div",{className:"flex flex-col gap-10",children})]})})]})}export{t};\n`,
     },
     settingsToggle: {
       assetName: "linux-settings-toggle-linux.js",
       exportName: "t",
-      source: `${jsxImport}function t({checked,disabled,onChange,ariaLabel}){let active=!!checked;return $.jsx("button",{type:"button",role:"switch","aria-checked":active,"aria-label":ariaLabel,disabled,"data-state":active?"checked":"unchecked",onClick:()=>{disabled||onChange(!active)},style:{boxSizing:"border-box",width:"32px",height:"20px",borderRadius:"9999px",border:"1px solid var(--color-token-border-default)",background:active?"var(--color-token-radio-active-foreground)":"var(--color-token-bg-secondary)",padding:"2px",display:"inline-flex",alignItems:"center",justifyContent:"flex-start",opacity:disabled?0.5:1,transition:"background-color 150ms ease,border-color 150ms ease"},children:$.jsx("span",{style:{display:"block",width:"14px",height:"14px",borderRadius:"9999px",background:active?"var(--color-token-bg-primary)":"var(--color-token-text-tertiary)",transform:active?"translateX(12px)":"translateX(0)",transition:"transform 150ms ease,background-color 150ms ease"}})})}export{t};\n`,
+      source: `${jsxImport}function t({checked,disabled,onChange,ariaLabel}){let active=!!checked,state=active?"checked":"unchecked",buttonClass=disabled?"inline-flex items-center text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:rounded-full cursor-not-allowed opacity-60":"inline-flex items-center text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:rounded-full cursor-interaction",trackClass=active?"relative inline-flex shrink-0 items-center rounded-full transition-colors duration-basic ease-out bg-token-charts-blue h-5 w-8":"relative inline-flex shrink-0 items-center rounded-full transition-colors duration-basic ease-out bg-token-foreground/10 h-5 w-8";return $.jsx("button",{type:"button",role:"switch","aria-checked":active,"aria-label":ariaLabel,disabled,"data-state":state,className:buttonClass,onClick:()=>{disabled||onChange(!active)},children:$.jsx("span",{className:trackClass,"data-state":state,children:$.jsx("span",{className:"rounded-full border border-[color:var(--gray-0)] bg-[color:var(--gray-0)] shadow-sm transition-transform duration-basic ease-out data-[state=unchecked]:translate-x-0 h-4 w-4 data-[state=unchecked]:translate-x-[2px] data-[state=checked]:translate-x-[14px]","data-state":state})})})}export{t};\n`,
     },
   };
 }
@@ -628,6 +599,72 @@ function collectOptionalMatchingAssetPatches(extractedDir, predicate, patchFn) {
 
   return patches;
 }
+
+function collectLinuxDesktopVisibilityPatch(extractedDir) {
+  const webviewAssetsDir = path.join(extractedDir, "webview", "assets");
+  if (!fs.existsSync(webviewAssetsDir)) {
+    throw new Error(`Required Keybinds settings patch failed: missing webview assets directory ${webviewAssetsDir}`);
+  }
+
+  const candidates = fs
+    .readdirSync(webviewAssetsDir)
+    .filter((name) => /^use-visible-settings-sections-.*\.js$/.test(name))
+    .sort()
+    .filter((name) => {
+      const source = fs.readFileSync(path.join(webviewAssetsDir, name), "utf8");
+      return isSettingsVisibilityBundleSource(source);
+    });
+
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Required Keybinds settings patch failed: could not find exactly one current settings visibility asset (found ${candidates.length})`,
+    );
+  }
+
+  const [candidate] = candidates;
+  const filePath = path.join(webviewAssetsDir, candidate);
+  const currentSource = fs.readFileSync(filePath, "utf8");
+  return [{
+    filePath,
+    currentSource,
+    patchedSource: applyLinuxDesktopSettingsVisibilityPatch(currentSource),
+    patchFn: applyLinuxDesktopSettingsVisibilityPatch,
+  }];
+}
+
+function collectLinuxDesktopIconMapPatches(extractedDir) {
+  const webviewAssetsDir = path.join(extractedDir, "webview", "assets");
+  if (!fs.existsSync(webviewAssetsDir)) {
+    throw new Error(`Required Keybinds settings patch failed: missing webview assets directory ${webviewAssetsDir}`);
+  }
+
+  const candidates = fs
+    .readdirSync(webviewAssetsDir)
+    .filter((name) => /^use-visible-settings-sections-.*\.js$/.test(name))
+    .sort()
+    .filter((name) => {
+      const source = fs.readFileSync(path.join(webviewAssetsDir, name), "utf8");
+      return isSettingsIconMapBundleSource(source);
+    });
+
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Required Keybinds settings patch failed: could not find exactly one settings icon map (found ${candidates.length})`,
+    );
+  }
+
+  return candidates.map((candidate) => {
+    const filePath = path.join(webviewAssetsDir, candidate);
+    const currentSource = fs.readFileSync(filePath, "utf8");
+    return {
+      filePath,
+      currentSource,
+      patchedSource: applyLinuxDesktopSettingsIconPatch(currentSource),
+      patchFn: applyLinuxDesktopSettingsIconPatch,
+    };
+  });
+}
+
 function collectLinuxDesktopRouteAndNavigationPatches(
   extractedDir,
   routeAssetSpecifier = linuxDesktopSettingsAsset,
@@ -637,18 +674,12 @@ function collectLinuxDesktopRouteAndNavigationPatches(
     throw new Error(`Required Keybinds settings patch failed: missing webview assets directory ${webviewAssetsDir}`);
   }
 
-  // Newer builds split the lazy settings route map out of `app-main-*.js`/`index-*.js`
-  // into hashed concatenation chunks. Some keep the `app-initial~app-main~*`
-  // prefix; others are settings-page chunks without that prefix. The
-  // icon/navigation metadata still lives in a settings-page chunk, so scan any
-  // hashed settings-page JS file plus the legacy app-main/index candidates.
   const candidates = fs
     .readdirSync(webviewAssetsDir)
-    .filter((name) => /^(?:(?:app-main|index)-|app-initial~app-main~).*\.js$/.test(name) || /(?:^|~)settings-page(?:[-~].*)?\.js$/.test(name))
+    .filter((name) => /^app-initial-[^.]+\.js$/.test(name))
     .sort();
 
   let routeMatched = false;
-  let navigationMatched = false;
   const patches = [];
   for (const candidate of candidates) {
     const filePath = path.join(webviewAssetsDir, candidate);
@@ -657,10 +688,6 @@ function collectLinuxDesktopRouteAndNavigationPatches(
     if (isSettingsRouteBundleSource(currentSource)) {
       routeMatched = true;
       patchedSource = applyLinuxDesktopSettingsRoutePatch(patchedSource, routeAssetSpecifier);
-    }
-    if (isSettingsNavigationBundleSource(currentSource)) {
-      navigationMatched = true;
-      patchedSource = applyLinuxDesktopSettingsNavigationPatch(patchedSource);
     }
     if (patchedSource !== currentSource) {
       patches.push({
@@ -672,9 +699,6 @@ function collectLinuxDesktopRouteAndNavigationPatches(
           if (isSettingsRouteBundleSource(nextSource)) {
             nextSource = applyLinuxDesktopSettingsRoutePatch(nextSource, routeAssetSpecifier);
           }
-          if (isSettingsNavigationBundleSource(nextSource)) {
-            nextSource = applyLinuxDesktopSettingsNavigationPatch(nextSource);
-          }
           return nextSource;
         },
       });
@@ -684,10 +708,6 @@ function collectLinuxDesktopRouteAndNavigationPatches(
   if (!routeMatched) {
     throw new Error("Required Keybinds settings patch failed: could not find Linux desktop settings route bundle");
   }
-  if (!navigationMatched) {
-    throw new Error("Required Keybinds settings patch failed: could not find Linux desktop settings navigation bundle");
-  }
-
   return patches;
 }
 
@@ -781,6 +801,7 @@ function patchKeybindsSettingsAssets(extractedDir) {
         isSettingsSectionsMetadataBundleSource,
         applyLinuxDesktopSettingsSectionsPatch,
       ),
+      ...collectLinuxDesktopVisibilityPatch(extractedDir),
       ...collectOptionalMatchingAssetPatches(
         extractedDir,
         isSettingsSharedMetadataBundleSource,
@@ -791,6 +812,7 @@ function patchKeybindsSettingsAssets(extractedDir) {
         isLinuxShortcutPhysicalKeyFallbackBundleSource,
         applyLinuxShortcutPhysicalKeyFallbackPatch,
       ),
+      ...collectLinuxDesktopIconMapPatches(extractedDir),
       ...collectLinuxDesktopRouteAndNavigationPatches(
         extractedDir,
         settingsAsset.routeAssetSpecifier,
@@ -838,6 +860,34 @@ function applyKeybindsSettingsSectionsPatch(currentSource) {
   throw new Error("Required Keybinds settings patch failed: could not add keybinds settings section");
 }
 
+function applyLinuxDesktopSettingsVisibilityPatch(currentSource) {
+  // The current settings catalog filters every registered slug through a
+  // visibility switch. Registering the route, icon, order, and group is not
+  // sufficient: an unknown slug falls through and is removed from the sidebar.
+  // Keep this anchored to the always-visible general/keyboard-shortcuts cases
+  // so unrelated slug switches in the same chunk are left untouched.
+  const visibilityMarker = "case`linux-desktop`:return!0;";
+  const visibilityAnchorPattern = /case`general-settings`:(?=(?:case`[^`]+`:)*return!0;)/g;
+  const patchedVisibilityPattern = /case`linux-desktop`:return!0;case`general-settings`:(?=(?:case`[^`]+`:)*return!0;)/g;
+  const anchorCount = currentSource.match(visibilityAnchorPattern)?.length ?? 0;
+  const markerCount = currentSource.match(/case`linux-desktop`:return!0;/g)?.length ?? 0;
+  const patchedCount = currentSource.match(patchedVisibilityPattern)?.length ?? 0;
+
+  if (anchorCount === 1 && markerCount === 1 && patchedCount === 1) {
+    return currentSource;
+  }
+  if (anchorCount !== 1 || markerCount !== 0) {
+    throw new Error(
+      `Required Keybinds settings patch failed: expected exactly one current settings visibility match (found ${anchorCount}, ${markerCount} already patched)`,
+    );
+  }
+
+  return currentSource.replace(
+    visibilityAnchorPattern,
+    `${visibilityMarker}case\`general-settings\`:`,
+  );
+}
+
 function applyLinuxDesktopSettingsSectionsPatch(currentSource) {
   let patchedSource = currentSource;
   const unpatchedArrayOrderPattern = /([A-Za-z_$][\w$]*=\[`general-settings`,)(?!`linux-desktop`,)/g;
@@ -848,28 +898,26 @@ function applyLinuxDesktopSettingsSectionsPatch(currentSource) {
     /`general-settings\.(?!linux-desktop\.)[^`]*keyboard-shortcuts[^`]*`\.split\(`\.`\)/.test(source) ||
     /[A-Za-z_$][\w$]*=\[\{slug:(?:`general-settings`|[A-Za-z_$][\w$]*)\},(?!\{slug:`linux-desktop`\},)/.test(source);
 
-  if (!hasUnpatchedEligibleSectionShape(patchedSource)) {
-    return patchedSource;
+  if (hasUnpatchedEligibleSectionShape(patchedSource)) {
+    patchedSource = patchedSource.replace(
+      unpatchedArrayOrderPattern,
+      "$1`linux-desktop`,",
+    );
+    patchedSource = patchedSource.replace(
+      unpatchedSplitOrderPattern,
+      "$1linux-desktop.$2",
+    );
+    patchedSource = patchedSource.replace(
+      unpatchedObjectSlugListPattern,
+      "$1{slug:`linux-desktop`},",
+    );
+
+    if (hasUnpatchedEligibleSectionShape(patchedSource)) {
+      throw new Error("Required Keybinds settings patch failed: could not add Linux desktop settings section");
+    }
   }
 
-  patchedSource = patchedSource.replace(
-    unpatchedArrayOrderPattern,
-    "$1`linux-desktop`,",
-  );
-  patchedSource = patchedSource.replace(
-    unpatchedSplitOrderPattern,
-    "$1linux-desktop.$2",
-  );
-  patchedSource = patchedSource.replace(
-    unpatchedObjectSlugListPattern,
-    "$1{slug:`linux-desktop`},",
-  );
-
-  if (!hasUnpatchedEligibleSectionShape(patchedSource)) {
-    return patchedSource;
-  }
-
-  throw new Error("Required Keybinds settings patch failed: could not add Linux desktop settings section");
+  return patchedSource;
 }
 
 // Inserts a new `titleForSection` switch case after the upstream
@@ -1085,19 +1133,22 @@ function isSettingsSectionsMetadataBundleSource(currentSource) {
   ) || /`general-settings\.[^`]*keyboard-shortcuts[^`]*`\.split\(`\.`\)/.test(currentSource);
 }
 
+function isSettingsVisibilityBundleSource(currentSource) {
+  return currentSource.includes("case`keyboard-shortcuts`:return!0")
+    && (
+      currentSource.includes("case`linux-desktop`:return!0;")
+      || /case`general-settings`:(?=(?:case`[^`]+`:)*return!0;)/.test(currentSource)
+    );
+}
+
 function isSettingsSharedMetadataBundleSource(currentSource) {
   return currentSource.includes('"general-settings":{id:`settings.nav.general-settings`')
     || currentSource.includes("id:`settings.section.general-settings`,defaultMessage:`General`");
 }
 
-function isSettingsNavigationBundleSource(currentSource) {
-  return (
-    /[A-Za-z_$][\w$]*=\{[^;]*"linux-desktop":[A-Za-z_$][\w$]*,/.test(currentSource)
-    && currentSource.includes("slugs:[`general-settings`,`linux-desktop`")
-  ) || (
-    /[A-Za-z_$][\w$]*=\{[^;]*"general-settings":[A-Za-z_$][\w$]*,/.test(currentSource)
-    && /[A-Za-z_$][\w$]*=\[`general-settings`,/.test(currentSource)
-    && currentSource.includes("slugs:[`general-settings`,")
+function isSettingsIconMapBundleSource(currentSource) {
+  return /[A-Za-z_$][\w$]*=\{(?:"linux-desktop":[A-Za-z_$][\w$]*,)?"general-settings":[A-Za-z_$][\w$]*,(?=[^;]{0,3000}"keyboard-shortcuts":[A-Za-z_$][\w$]*[,}])/.test(
+    currentSource,
   );
 }
 
@@ -1131,82 +1182,31 @@ function applyLinuxDesktopSettingsRoutePatch(
   return patchedSource;
 }
 
-function applyLinuxDesktopSettingsNavigationPatch(currentSource) {
-  let patchedSource = currentSource;
+function applyLinuxDesktopSettingsIconPatch(currentSource) {
+  const patchedIconPattern = /[A-Za-z_$][\w$]*=\{"linux-desktop":[A-Za-z_$][\w$]*,"general-settings":[A-Za-z_$][\w$]*,(?=[^;]{0,3000}"keyboard-shortcuts":[A-Za-z_$][\w$]*[,}])/g;
+  const iconPattern = /([A-Za-z_$][\w$]*=\{)"general-settings":([A-Za-z_$][\w$]*),(?=[^;]{0,3000}"keyboard-shortcuts":[A-Za-z_$][\w$]*[,}])/g;
+  const patchedCount = currentSource.match(patchedIconPattern)?.length ?? 0;
+  const unpatchedCount = currentSource.match(iconPattern)?.length ?? 0;
 
-  if (!/[,{]"linux-desktop":[A-Za-z_$][\w$]*,"general-settings":/.test(patchedSource)) {
-    const iconPattern = /([A-Za-z_$][\w$]*=\{)"general-settings":([A-Za-z_$][\w$]*),/;
-    if (!iconPattern.test(patchedSource)) {
-      throw new Error("Required Keybinds settings patch failed: could not add Linux desktop icon");
-    }
-    patchedSource = patchedSource.replace(
-      iconPattern,
-      (_match, prefix, icon) => `${prefix}"linux-desktop":${icon},"general-settings":${icon},`,
+  if (patchedCount === 1 && unpatchedCount === 0) {
+    return currentSource;
+  }
+
+  const iconMapCount = patchedCount + unpatchedCount;
+  if (patchedCount !== 0 || unpatchedCount !== 1) {
+    throw new Error(
+      `Required Keybinds settings patch failed: expected exactly one settings icon map (found ${iconMapCount}, ${patchedCount} already patched)`,
     );
   }
 
-  if (!/=\[`general-settings`,`linux-desktop`/.test(patchedSource)) {
-    const orderPattern = /([A-Za-z_$][\w$]*=\[`general-settings`,)(?!`linux-desktop`)/;
-    if (!orderPattern.test(patchedSource)) {
-      throw new Error("Required Keybinds settings patch failed: could not add Linux desktop nav order");
-    }
-    patchedSource = patchedSource.replace(orderPattern, "$1`linux-desktop`,");
-  }
-
-  if (!patchedSource.includes("slugs:[`general-settings`,`linux-desktop`")) {
-    const groupPattern = /(slugs:\[`general-settings`,)(?!`linux-desktop`)/;
-    if (!groupPattern.test(patchedSource)) {
-      throw new Error("Required Keybinds settings patch failed: could not add Linux desktop nav group");
-    }
-    patchedSource = patchedSource.replace(groupPattern, "$1`linux-desktop`,");
-  }
-
-  if (
-    !patchedSource.includes("case`linux-desktop`:return l===`electron`")
-    && !patchedSource.includes("case`linux-desktop`:case`general-settings`:case`agent`:case`personalization`:return!0;")
-  ) {
-    const visibilityNeedle =
-      "case`appearance`:case`git-settings`:case`worktrees`:case`local-environments`:case`data-controls`:case`environments`:return l===`electron`;";
-    const visibilityPatch =
-      "case`linux-desktop`:return l===`electron`;case`appearance`:case`git-settings`:case`worktrees`:case`local-environments`:case`data-controls`:case`environments`:return l===`electron`;";
-    if (!patchedSource.includes(visibilityNeedle)) {
-      const currentVisibilityNeedle =
-        "case`general-settings`:case`agent`:case`personalization`:return!0;";
-      const currentVisibilityPatch =
-        "case`linux-desktop`:case`general-settings`:case`agent`:case`personalization`:return!0;";
-      if (!patchedSource.includes(currentVisibilityNeedle)) {
-        throw new Error("Required Keybinds settings patch failed: could not add Linux desktop visibility");
-      }
-      patchedSource = patchedSource.replace(currentVisibilityNeedle, currentVisibilityPatch);
-    } else {
-      patchedSource = patchedSource.replace(visibilityNeedle, visibilityPatch);
-    }
-  }
-
-  if (!/case`linux-desktop`:[A-Za-z_$][\w$]*=!1;break [A-Za-z_$][\w$]*;/.test(patchedSource)) {
-    const redirectNeedle =
-      "case`appearance`:case`general-settings`:case`agent`:case`git-settings`:case`account`:case`data-controls`:case`personalization`:k=!1;break bb0;";
-    const redirectPatch =
-      "case`linux-desktop`:k=!1;break bb0;case`appearance`:case`general-settings`:case`agent`:case`git-settings`:case`account`:case`data-controls`:case`personalization`:k=!1;break bb0;";
-    if (patchedSource.includes(redirectNeedle)) {
-      patchedSource = patchedSource.replace(redirectNeedle, redirectPatch);
-    } else {
-      const currentLoadingPattern = /(case`appearance`:case`general-settings`:case`agent`:case`git-settings`:case`data-controls`:case`personalization`:([A-Za-z_$][\w$]*)=!1;break ([A-Za-z_$][\w$]*);)/;
-      if (currentLoadingPattern.test(patchedSource)) {
-        patchedSource = patchedSource.replace(
-          currentLoadingPattern,
-          (_match, existingCases, loadingAlias, breakLabel) =>
-            `case\`linux-desktop\`:${loadingAlias}=!1;break ${breakLabel};${existingCases}`,
-        );
-      }
-    }
-  }
-
-  return patchedSource;
+  return currentSource.replace(
+    iconPattern,
+    (_match, prefix, icon) => `${prefix}"linux-desktop":${icon},"general-settings":${icon},`,
+  );
 }
 
 function applyLinuxDesktopSettingsIndexPatch(currentSource) {
-  return applyLinuxDesktopSettingsNavigationPatch(
+  return applyLinuxDesktopSettingsSectionsPatch(
     applyLinuxDesktopSettingsRoutePatch(currentSource),
   );
 }
@@ -1216,7 +1216,7 @@ module.exports = {
   applyKeybindsSettingsSectionsPatch,
   applyKeybindsSettingsSharedPatch,
   applyLinuxDesktopSettingsIndexPatch,
-  applyLinuxDesktopSettingsNavigationPatch,
+  applyLinuxDesktopSettingsIconPatch,
   applyLinuxDesktopSettingsRoutePatch,
   applyLinuxDesktopSettingsSectionsPatch,
   applyLinuxDesktopSettingsSharedPatch,

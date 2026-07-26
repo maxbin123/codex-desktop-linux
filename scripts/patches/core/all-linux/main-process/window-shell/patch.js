@@ -5,7 +5,7 @@ const {
   mainBundlePatch,
 } = require("../../../../descriptor.js");
 const {
-  applyLinuxAboutDialogPatch,
+  applyLinuxAppReloadShortcutsPatch,
   applyLinuxApplicationMenuPatch,
   applyLinuxWindowOptionsPatch,
   applyLinuxNativeTitlebarPatch,
@@ -29,7 +29,9 @@ const {
   applyLinuxTrayPatch,
   applyLinuxSingleInstancePatch,
 } = require("../../../../impl/main-process/tray.js");
-const { applyLinuxAvatarOverlayMousePassthroughPatch } = require("../../../../impl/avatar-overlay.js");
+const {
+  applyLinuxAvatarOverlayMousePassthroughPatch,
+} = require("../../../../impl/avatar-overlay.js");
 
 module.exports = [
   extractedAppPatch({
@@ -47,13 +49,6 @@ module.exports = [
       }
       return "already-applied";
     },
-  }),
-  mainBundlePatch({
-    id: "linux-about-dialog",
-    phase: "main-bundle",
-    order: 55,
-    ciPolicy: "optional",
-    apply: (source, context) => applyLinuxAboutDialogPatch(source, context.iconPathExpression),
   }),
   mainBundlePatch({
     id: "linux-window-options",
@@ -75,6 +70,13 @@ module.exports = [
     order: 65,
     ciPolicy: "optional",
     apply: applyLinuxApplicationMenuPatch,
+  }),
+  mainBundlePatch({
+    id: "linux-app-reload-shortcuts",
+    phase: "main-bundle",
+    order: 67,
+    ciPolicy: "optional",
+    apply: applyLinuxAppReloadShortcutsPatch,
   }),
   mainBundlePatch({
     id: "linux-native-titlebar",

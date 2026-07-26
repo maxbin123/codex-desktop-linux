@@ -176,11 +176,14 @@ prepare_appdir() {
     cp "$ICON_SOURCE" "$APPDIR/.DirIcon"
     cp "$ICON_SOURCE" "$APPDIR/usr/share/icons/hicolor/256x256/apps/$PACKAGE_NAME.png"
     cp "$ICON_SOURCE" "$APPDIR/opt/$PACKAGE_NAME/.codex-linux/$PACKAGE_NAME.png"
+    cp "$REPO_DIR/launcher/cli-launch-path.py" "$APPDIR/opt/$PACKAGE_NAME/.codex-linux/cli-launch-path.py"
 
     render_template \
         "$APPIMAGE_RUNTIME_TEMPLATE" \
         "$APPDIR/opt/$PACKAGE_NAME/.codex-linux/codex-packaged-runtime.sh"
     chmod 0644 "$APPDIR/opt/$PACKAGE_NAME/.codex-linux/codex-packaged-runtime.sh"
+    normalize_package_payload_permissions "$APPDIR"
+    restore_linux_feature_payload_permissions "$APPDIR"
 }
 
 main() {

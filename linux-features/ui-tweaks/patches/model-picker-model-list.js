@@ -1,11 +1,8 @@
 "use strict";
 
-const MODEL_PICKER_STATE_ASSET_PATTERN =
-  /^app-initial~app-main~new-thread-panel-page~appgen-library-page~hotkey-window-thread-page~ho~iufn7mg3-[^.]+\.js$/;
-const MODEL_PICKER_ALLOWLIST_ASSET_PATTERN =
-  /^app-initial~app-main~onboarding-page~projects-index-page~hotkey-window-thread-page~quick-ch~iiv1g666-[^.]+\.js$/;
-const MODEL_PICKER_MENU_ASSET_PATTERN =
-  /^app-initial~app-main~onboarding-page~projects-index-page~hotkey-window-thread-page~quick-ch~iiv1g666-[^.]+\.js$/;
+const MODEL_PICKER_STATE_ASSET_PATTERN = /^app-initial-[^.]+\.js$/;
+const MODEL_PICKER_INLINE_ASSET_PATTERN = MODEL_PICKER_STATE_ASSET_PATTERN;
+const MODEL_PICKER_EFFORT_ASSET_PATTERN = MODEL_PICKER_STATE_ASSET_PATTERN;
 const SIMPLE_MENU_VIEW_PATTERN =
   /([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\(`composer-model-picker-menu-view-v1`,`simple`\)/;
 const ADVANCED_MENU_VIEW_PATTERN =
@@ -16,9 +13,6 @@ const EFFORT_TITLE_MARKER = "composer.intelligenceDropdown.effort.title";
 const INLINE_MODEL_LIST_RUNTIME_MARKER = "codex-linux-inline-model-list";
 const DYNAMIC_POWER_EFFORTS_RUNTIME_MARKER =
   "codex-linux-dynamic-supported-reasoning-efforts";
-const MODEL_ALLOWLIST_MARKER = "l?t.has(n.model):!n.hidden";
-const GPT_56_ALLOWLIST_MARKER =
-  "l?t.has(n.model)||n.model.startsWith(`gpt-5.6-`)&&!n.hidden:!n.hidden";
 const JS_IDENT = "[A-Za-z_$][\\w$]*";
 
 function warn(message) {
@@ -73,7 +67,7 @@ function findInlineModelListVariable(source) {
 
   const section = source.slice(titleIndex, rowIndex);
   const assignments = [
-    ...section.matchAll(/let\s+([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*),[A-Za-z_$][\w$]*;/g),
+    ...section.matchAll(/,([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*);let/g),
   ];
   return assignments.at(-1)?.[1] ?? null;
 }
@@ -99,7 +93,7 @@ function applyInlineModelListPatch(source, context = {}) {
 
     const tail = source.slice(effortIndex);
     const advancedChildrenPattern =
-      /(let\s+[A-Za-z_$][\w$]*=\(0,([A-Za-z_$][\w$]*)\.jsxs\)\(\2\.Fragment,\{children:\[)([A-Za-z_$][\w$]*),/;
+      /(([A-Za-z_$][\w$]*)=\(0,([A-Za-z_$][\w$]*)\.jsxs\)\(\3\.Fragment,\{children:\[)([A-Za-z_$][\w$]*),/;
     const match = tail.match(advancedChildrenPattern);
     if (match == null) {
       if (context.warnOnMissingMarkers === true) {
@@ -113,29 +107,6 @@ function applyInlineModelListPatch(source, context = {}) {
       `$1${inlineModelListVariable},/*${INLINE_MODEL_LIST_RUNTIME_MARKER}*/`,
     );
     return source.slice(0, effortIndex) + patchedTail;
-  } catch (error) {
-    warn(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
-    return source;
-  }
-}
-
-function applyGpt56AllowlistPatch(source, context = {}) {
-  try {
-    if (typeof source !== "string") {
-      warn("Asset source is not a string");
-      return source;
-    }
-    if (!enabled(context) || source.includes(GPT_56_ALLOWLIST_MARKER)) {
-      return source;
-    }
-    if (!source.includes(MODEL_ALLOWLIST_MARKER)) {
-      if (context.warnOnMissingMarkers === true) {
-        warn("Could not find the model availability allowlist marker");
-      }
-      return source;
-    }
-
-    return source.replace(MODEL_ALLOWLIST_MARKER, GPT_56_ALLOWLIST_MARKER);
   } catch (error) {
     warn(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
     return source;
@@ -170,9 +141,14 @@ function applyDynamicSupportedReasoningEffortsPatch(source, context = {}) {
     }
 
     const powerSelectionPattern = new RegExp(
-      `function (${JS_IDENT})\\((${JS_IDENT}),(${JS_IDENT})=!1\\)\\{let (${JS_IDENT})=` +
-        `(${JS_IDENT})\\((.+?),\\2\\);if\\(\\4\\.length>=4\\)return \\4;let (${JS_IDENT})=` +
-        `\\5\\((${JS_IDENT}),\\2\\);return \\7\\.length>=4\\?\\7:\\[\\]\\}`,
+      `function (${JS_IDENT})\\((${JS_IDENT}),\\{includeUltraInSlider:(${JS_IDENT})=!1,` +
+        `removeXHigh:(${JS_IDENT})=!1\\}=\\{\\}\\)\\{let (${JS_IDENT})=(${JS_IDENT})` +
+        `\\((.+?\\.filter\\(\\(\\{reasoningEffort:(${JS_IDENT})\\}\\)=>!\\4\\|\\|\\8!==` +
+        "`xhigh`\\))" +
+        `,\\2\\);if\\(\\5\\.length>=3\\)return \\5;let (${JS_IDENT})=\\6` +
+        `\\((.+?\\.filter\\(\\(\\{reasoningEffort:(${JS_IDENT})\\}\\)=>!\\4\\|\\|\\11!==` +
+        "`xhigh`\\))" +
+        `,\\2\\);return \\9\\.length>=3\\?\\9:\\[\\]\\}`,
     );
     const match = source.match(powerSelectionPattern);
     if (match == null) {
@@ -187,27 +163,29 @@ function applyDynamicSupportedReasoningEffortsPatch(source, context = {}) {
       resolverFunction,
       modelsVar,
       includeUltraVar,
+      removeXHighVar,
       primarySelectionsVar,
       supportedSelectionsFilter,
       primaryCandidates,
+      _primaryEffortVar,
       fallbackSelectionsVar,
       fallbackCandidates,
+      _fallbackEffortVar,
     ] = match;
     const patched =
-      `function ${resolverFunction}(${modelsVar},${includeUltraVar}=!1){` +
-      `let ${primarySelectionsVar}=${supportedSelectionsFilter}((${primaryCandidates}).filter(` +
-      `${modelsVar}=>${modelsVar}.model!==\`gpt-5.6-sol\`),${modelsVar}),` +
-      `codexLinuxSolModel=${modelsVar}?.find(${modelsVar}=>${modelsVar}.model===\`gpt-5.6-sol\`),` +
-      `codexLinuxSolSelections=codexLinuxSolModel==null?[]:` +
-      `${dynamicPowerSelectionsFunction}([codexLinuxSolModel]).map((${modelsVar},codexLinuxIndex)=>` +
-      `({...${modelsVar},powerSettingIndex:${primarySelectionsVar}.length+codexLinuxIndex})),` +
-      `codexLinuxPowerSelections=[...${primarySelectionsVar},...codexLinuxSolSelections]` +
-      `/*${DYNAMIC_POWER_EFFORTS_RUNTIME_MARKER}*/;` +
-      `if(codexLinuxPowerSelections.length>=4)return codexLinuxPowerSelections;` +
-      `let codexLinuxCuratedSelections=${supportedSelectionsFilter}(${primaryCandidates},${modelsVar});` +
-      `if(codexLinuxCuratedSelections.length>=4)return codexLinuxCuratedSelections;` +
+      `function ${resolverFunction}(${modelsVar},{includeUltraInSlider:${includeUltraVar}=!1,` +
+      `removeXHigh:${removeXHighVar}=!1}={}){` +
+      `let codexLinuxCandidates=[...(${primaryCandidates}).filter(({model:codexLinuxModel})=>` +
+      `codexLinuxModel!==\`gpt-5.6-sol\`),...${dynamicPowerSelectionsFunction}(` +
+      `${modelsVar}?.filter(({model:codexLinuxModel})=>codexLinuxModel===\`gpt-5.6-sol\`))` +
+      `.filter(({reasoningEffort:codexLinuxEffort})=>` +
+      `(${includeUltraVar}||codexLinuxEffort!==\`ultra\`)&&` +
+      `(!${removeXHighVar}||codexLinuxEffort!==\`xhigh\`))]` +
+      `/*${DYNAMIC_POWER_EFFORTS_RUNTIME_MARKER}*/,` +
+      `${primarySelectionsVar}=${supportedSelectionsFilter}(codexLinuxCandidates,${modelsVar});` +
+      `if(${primarySelectionsVar}.length>=3)return ${primarySelectionsVar};` +
       `let ${fallbackSelectionsVar}=${supportedSelectionsFilter}(${fallbackCandidates},${modelsVar});` +
-      `return ${fallbackSelectionsVar}.length>=4?${fallbackSelectionsVar}:[]}`;
+      `return ${fallbackSelectionsVar}.length>=3?${fallbackSelectionsVar}:[]}`;
 
     return source.replace(original, patched);
   } catch (error) {
@@ -218,10 +196,7 @@ function applyDynamicSupportedReasoningEffortsPatch(source, context = {}) {
 
 function applyModelPickerModelListPatch(source, context = {}) {
   return applyDynamicSupportedReasoningEffortsPatch(
-    applyInlineModelListPatch(
-      applyGpt56AllowlistPatch(applyDefaultAdvancedViewPatch(source, context), context),
-      context,
-    ),
+    applyInlineModelListPatch(applyDefaultAdvancedViewPatch(source, context), context),
     context,
   );
 }
@@ -239,22 +214,11 @@ const descriptors = [
       applyDefaultAdvancedViewPatch(source, { ...context, warnOnMissingMarkers: true }),
   },
   {
-    id: "model-picker-include-gpt-5-6",
-    phase: "webview-asset",
-    order: 20_795,
-    ciPolicy: "optional",
-    pattern: MODEL_PICKER_ALLOWLIST_ASSET_PATTERN,
-    missingDescription: "composer model picker allowlist bundle",
-    skipDescription: "ui-tweaks GPT-5.6 model allowlist patch",
-    apply: (source, context = {}) =>
-      applyGpt56AllowlistPatch(source, { ...context, warnOnMissingMarkers: true }),
-  },
-  {
     id: "model-picker-inline-model-list",
     phase: "webview-asset",
     order: 20_796,
     ciPolicy: "optional",
-    pattern: MODEL_PICKER_MENU_ASSET_PATTERN,
+    pattern: MODEL_PICKER_INLINE_ASSET_PATTERN,
     missingDescription: "composer model picker menu bundle",
     skipDescription: "ui-tweaks model picker inline model list patch",
     apply: (source, context = {}) =>
@@ -265,7 +229,7 @@ const descriptors = [
     phase: "webview-asset",
     order: 20_797,
     ciPolicy: "optional",
-    pattern: MODEL_PICKER_MENU_ASSET_PATTERN,
+    pattern: MODEL_PICKER_EFFORT_ASSET_PATTERN,
     missingDescription: "composer model picker menu bundle",
     skipDescription: "ui-tweaks dynamic supported reasoning efforts patch",
     apply: (source, context = {}) =>
@@ -280,18 +244,15 @@ module.exports = {
   ADVANCED_MENU_VIEW_PATTERN,
   DYNAMIC_POWER_EFFORTS_RUNTIME_MARKER,
   EFFORT_TITLE_MARKER,
-  GPT_56_ALLOWLIST_MARKER,
   INLINE_MODEL_LIST_RUNTIME_MARKER,
-  MODEL_ALLOWLIST_MARKER,
-  MODEL_PICKER_ALLOWLIST_ASSET_PATTERN,
-  MODEL_PICKER_MENU_ASSET_PATTERN,
+  MODEL_PICKER_EFFORT_ASSET_PATTERN,
+  MODEL_PICKER_INLINE_ASSET_PATTERN,
   MODEL_PICKER_STATE_ASSET_PATTERN,
   MODEL_ROW_MARKER,
   MODEL_TITLE_MARKER,
   SIMPLE_MENU_VIEW_PATTERN,
   applyDefaultAdvancedViewPatch,
   applyDynamicSupportedReasoningEffortsPatch,
-  applyGpt56AllowlistPatch,
   applyInlineModelListPatch,
   applyModelPickerModelListPatch,
   descriptors,

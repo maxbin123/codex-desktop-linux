@@ -205,6 +205,8 @@ The Home Manager and NixOS modules accept these feature IDs through
 | Feature ID | Purpose |
 | --- | --- |
 | `appshots` | Linux AppShots capture integration |
+| `codex-micro` | Work Louder Codex Micro USB and Bluetooth HID integration |
+| `directory-only-working-tree-watch` | Bounded directory-only working-tree watches |
 | `frameless-titlebar` | Hide app-provided titlebar controls for compositor-managed decorations |
 | `mcp-helper-reaper` | Cleanup for stale configured MCP helper processes |
 | `node-repl-reaper` | Cleanup for leaked Browser Use `node_repl` helpers |
@@ -216,6 +218,11 @@ The list is validated during module evaluation, then deduplicated and sorted so
 equivalent configurations produce the same derivation. Features that are not in
 this Nix allowlist remain available through the regular opt-in feature flow but
 cannot be selected from a pure flake configuration.
+
+When `codex-micro` is selected, the NixOS module installs the feature's udev
+rule automatically. Home Manager and direct flake installs cannot change
+system-wide udev policy; follow the manual rule-installation steps in the
+[Codex Micro feature documentation](../linux-features/codex-micro/README.md).
 
 ## Home Manager / NixOS Module
 
@@ -276,5 +283,9 @@ Users can opt in locally with:
 cachix use codex-desktop-linux
 ```
 
-The scheduled `Populate Cachix` workflow builds the default package,
-feature-specific package variants, and `.#installer`.
+When a merge to `main` changes the pinned `Codex.dmg` hash, the `Populate
+Cachix` workflow builds the default package, feature-specific package variants,
+the watchdog feature check, and `.#installer`. It uploads and garbage-collects
+each output before starting the next one so the hosted runner does not retain
+every large app variant at once. Maintainers can dispatch the workflow manually
+to backfill the current `main` pin after a skipped or interrupted run.
